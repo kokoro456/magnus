@@ -1,4 +1,3 @@
-import React from 'react';
 import { usePlane } from '@react-three/cannon';
 import { Line } from '@react-three/drei';
 import * as THREE from 'three';
