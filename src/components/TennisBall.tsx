@@ -142,6 +142,7 @@ const TennisBall = forwardRef<TennisBallRef, TennisBallProps>((props, ref) => {
     <mesh ref={sphereRef as any} castShadow receiveShadow>
       <sphereGeometry args={[0.033, 32, 32]} />
       {/* 커스텀 쉐이더 재질 적용 */}
+      {/* @ts-ignore */}
       <softBodyMaterial ref={materialRef} transparent />
     </mesh>
   );
