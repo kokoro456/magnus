@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -41,7 +41,7 @@ const GhostRacket = ({
     return new THREE.CatmullRomCurve3([start, impactPoint, end]);
   }, [swingPathAngle]);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (onSwing && groupRef.current) {
       timeRef.current += delta * 3; // 스윙 속도
       if (timeRef.current > 1) {

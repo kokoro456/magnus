@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePlane } from '@react-three/cannon';
-import { useTexture, Line } from '@react-three/drei';
+import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 
 // 테니스 코트 규격 (미터 단위)
@@ -11,7 +11,6 @@ import * as THREE from 'three';
 
 const CourtLines = () => {
   const lineColor = "white";
-  const lineWidth = 0.05; // 5cm
 
   // 라인 정의 (Z축이 길이 방향, X축이 폭 방향)
   const lines = [
