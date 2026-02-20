@@ -1,166 +1,244 @@
 // src/App.tsx
-import { useRef, useState, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Physics, usePlane } from '@react-three/cannon';
-import { OrbitControls, Line, Sky, Stars } from '@react-three/drei';
-import { useControls, button } from 'leva';
+import { Physics } from '@react-three/cannon';
+import { OrbitControls, Environment, ContactShadows, Line } from '@react-three/drei';
 import * as THREE from 'three';
 
 import TennisBall from './components/TennisBall';
 import type { TennisBallRef } from './components/TennisBall';
+import Court from './components/Court'; // 새로 만든 코트 컴포넌트
 import { calculateImpact, predictTrajectory } from './utils/physicsLogic';
 
-// 테니스 코트 (바닥)
-const TennisCourt = () => {
-  const [ref] = usePlane(() => ({
-    rotation: [-Math.PI / 2, 0, 0],
-    position: [0, 0, 0],
-    material: { friction: 0.6, restitution: 0.7 } // 하드 코트 특성
-  }));
+// --- Types & Constants ---
+type PresetName = 'Forehand' | 'Backhand' | 'Volley' | 'Serve';
 
-  return (
-    <mesh ref={ref as any} receiveShadow>
-      <planeGeometry args={[20, 30]} />
-      <meshStandardMaterial color="#3a6ea5" /> {/* 하드 코트 색상 */}
-      <gridHelper args={[20, 20, 0xffffff, 0xffffff]} rotation={[-Math.PI/2, 0, 0]} position={[0, 0.01, 0]} />
-    </mesh>
-  );
+interface SwingParams {
+  racketSpeed: number; // m/s
+  racketAngle: number; // deg
+  swingPathAngle: number; // deg
+  impactLocation: number; // 0-1
+  spinType: string;
+}
+
+const PRESETS: Record<PresetName, SwingParams> = {
+  Forehand: { racketSpeed: 35, racketAngle: -5, swingPathAngle: 20, impactLocation: 0.1, spinType: 'Topspin' },
+  Backhand: { racketSpeed: 30, racketAngle: -2, swingPathAngle: 15, impactLocation: 0.0, spinType: 'Topspin' },
+  Volley: { racketSpeed: 15, racketAngle: 5, swingPathAngle: -10, impactLocation: 0.0, spinType: 'Flat' },
+  Serve: { racketSpeed: 55, racketAngle: -15, swingPathAngle: -5, impactLocation: 0.2, spinType: 'Flat' },
 };
 
-// 궤적 예측 선
+// --- UI Components ---
+const RangeControl = ({ label, value, min, max, step, onChange, unit }: any) => (
+  <div className="control-group">
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+      <label className="label">{label}</label>
+      <span className="label" style={{ color: 'var(--primary)' }}>{value} {unit}</span>
+    </div>
+    <input 
+      type="range" 
+      min={min} 
+      max={max} 
+      step={step} 
+      value={value} 
+      onChange={(e) => onChange(parseFloat(e.target.value))} 
+    />
+  </div>
+);
+
+// --- 3D Helper Components ---
 const TrajectoryLine = ({ points }: { points: THREE.Vector3[] }) => {
   if (points.length < 2) return null;
   return (
     <Line
       points={points}
-      color="red"
-      lineWidth={3}
+      color="#ccff00"
+      lineWidth={2}
       dashed={true}
-      dashScale={2}
-      dashSize={1}
+      dashScale={1}
+      dashSize={0.5}
       gapSize={0.5}
+      opacity={0.6}
+      transparent
     />
   );
 };
 
-const Scene = () => {
-  const ballRef = useRef<TennisBallRef>(null);
+// --- Main App ---
+export default function App() {
+  // State
+  const [activePreset, setActivePreset] = useState<PresetName>('Forehand');
+  const [params, setParams] = useState<SwingParams>(PRESETS.Forehand);
   const [trajectoryPoints, setTrajectoryPoints] = useState<THREE.Vector3[]>([]);
+  const [lastImpactData, setLastImpactData] = useState<{ speed: number; rpm: number } | null>(null);
 
-  // Leva 컨트롤 패널
-  const { racketSpeed, racketAngle, swingPathAngle, impactLocation, spinType } = useControls('Swing Parameters', {
-    racketSpeed: { value: 30, min: 10, max: 60, step: 1, label: 'Racket Speed (m/s)' },
-    racketAngle: { value: 0, min: -20, max: 20, step: 1, label: 'Racket Face Angle (deg)' },
-    swingPathAngle: { value: 10, min: -10, max: 45, step: 1, label: 'Swing Path (deg)' },
-    impactLocation: { value: 0, min: 0, max: 1, step: 0.1, label: 'Off-Center Hit (0-1)' },
-    spinType: { value: 'Topspin', options: ['Topspin', 'Flat', 'Slice', 'Sidespin'] } // 단순 참고용 라벨
-  });
+  const ballRef = useRef<TennisBallRef>(null);
 
-  // 스윙 액션
-  useControls({
-    'Swing!': button(() => {
-      if (!ballRef.current) return;
+  // Preset Handler
+  const applyPreset = (name: PresetName) => {
+    setActivePreset(name);
+    setParams(PRESETS[name]);
+  };
 
-      // 1. 브로디 모델로 초기 상태 계산
-      const impactData = calculateImpact(racketSpeed, racketAngle, swingPathAngle, impactLocation);
-      
-      // 2. RPM -> rad/s 변환
-      // 탑스핀: X축 회전 (전진 방향으로 굴러가는 회전, -X)
-      // 슬라이스: X축 역회전 (+X)
-      // 사이드스핀: Y축 회전
-      // 여기서는 간단히 Topspin/Slice 모델만 적용 (X축 회전)
-      
-      // 물리 엔진의 각속도 벡터 (rad/s)
-      const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
-      
-      // 스핀 축 결정 (탑스핀 기준: 공의 윗부분이 진행방향으로 감 => -X축 회전)
-      // 만약 슬라이스라면 반대
-      // PhysicsLogic에서 이미 Tangential Velocity로 방향성을 잡았지만,
-      // 여기서는 3D 축에 매핑해줘야 함.
-      // TennisBall의 z축이 진행방향(-z)이라고 가정할 때, x축 회전이 탑스핀/백스핀 관여.
-      
-      // 간단한 모델링: 스윙 궤적이 라켓 각도보다 가파르면(상향) 탑스핀, 완만하면(하향) 슬라이스
-      // PhysicsLogic에서 RPM은 절대값으로 나올 수 있으므로 방향 보정
-      let spinAxis = new THREE.Vector3(-1, 0, 0); // 기본 탑스핀 축
-      if (swingPathAngle < racketAngle) {
-          // 하향 스윙 -> 슬라이스 (역회전) -> +X축 회전
-          spinAxis.set(1, 0, 0);
-      }
-      
-      // 사이드스핀 로직 (추가 구현 가능)
-      if (spinType === 'Sidespin') {
-          spinAxis.set(0, 1, 0);
-      }
+  // Parameter Change Handler
+  const updateParam = (key: keyof SwingParams, value: any) => {
+    setParams(prev => ({ ...prev, [key]: value }));
+    setActivePreset('Forehand'); // Custom 상태로 변경 시 하이라이트 해제 (선택 사항)
+  };
 
-      const angularVelocity = spinAxis.multiplyScalar(angularSpeedRad);
-
-      // 3. 공 초기화 및 발사
-      // 시작 위치: 높이 1m, 네트 앞쪽
-      const startPos: [number, number, number] = [0, 1, 10]; 
-      
-      ballRef.current.reset(
-        startPos,
-        [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
-        [angularVelocity.x, angularVelocity.y, angularVelocity.z]
-      );
-    }),
-    'Reset': button(() => {
-       if (ballRef.current) ballRef.current.reset([0, 1, 10], [0,0,0], [0,0,0]);
-    })
-  });
-
-  // 파라미터 변경 시 예상 궤적 업데이트
+  // Trajectory Prediction (Effect)
   useEffect(() => {
-    // 가상 시뮬레이션
-    const impactData = calculateImpact(racketSpeed, racketAngle, swingPathAngle, impactLocation);
+    const impactData = calculateImpact(params.racketSpeed, params.racketAngle, params.swingPathAngle, params.impactLocation);
     const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
     
-    let spinAxis = new THREE.Vector3(-1, 0, 0);
-    if (swingPathAngle < racketAngle) spinAxis.set(1, 0, 0);
-    if (spinType === 'Sidespin') spinAxis.set(0, 1, 0);
+    let spinAxis = new THREE.Vector3(-1, 0, 0); // Topspin base
+    if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0); // Slice
+    // Side spin logic could be added here
 
     const startVel = impactData.velocity.clone();
     const startAngVel = spinAxis.multiplyScalar(angularSpeedRad);
-    const startPos = new THREE.Vector3(0, 1, 10);
+    // Serve starts higher
+    const startY = activePreset === 'Serve' ? 2.8 : 1.0;
+    const startPos = new THREE.Vector3(0, startY, 11); // 네트(0) 기준 뒤쪽(11m)
 
     const points = predictTrajectory(startPos, startVel, startAngVel);
     setTrajectoryPoints(points);
+  }, [params, activePreset]);
 
-  }, [racketSpeed, racketAngle, swingPathAngle, impactLocation, spinType]);
+  // Swing Action
+  const handleSwing = useCallback(() => {
+    if (!ballRef.current) return;
+
+    const impactData = calculateImpact(params.racketSpeed, params.racketAngle, params.swingPathAngle, params.impactLocation);
+    const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
+    
+    let spinAxis = new THREE.Vector3(-1, 0, 0);
+    if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0);
+
+    const startY = activePreset === 'Serve' ? 2.8 : 1.0;
+    const startPos: [number, number, number] = [0, startY, 11];
+
+    ballRef.current.reset(
+      startPos,
+      [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
+      [spinAxis.x * angularSpeedRad, spinAxis.y * angularSpeedRad, spinAxis.z * angularSpeedRad]
+    );
+
+    setLastImpactData({
+      speed: Math.round(impactData.velocity.length() * 3.6), // km/h
+      rpm: Math.round(impactData.rpm)
+    });
+  }, [params, activePreset]);
+
+  const handleReset = () => {
+    if (ballRef.current) {
+        const startY = activePreset === 'Serve' ? 2.8 : 1.0;
+        ballRef.current.reset([0, startY, 11], [0,0,0], [0,0,0]);
+    }
+  };
 
   return (
-    <>
-      <OrbitControls />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-      <Sky sunPosition={[100, 20, 100]} />
-      <Stars />
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#050505' }}>
       
-      <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ restitution: 0.7, friction: 0.6 }}>
-        <TennisBall ref={ballRef} position={[0, 1, 10]} />
-        <TennisCourt />
-      </Physics>
+      {/* 3D Scene */}
+      <Canvas shadows camera={{ position: [8, 6, 18], fov: 45 }}>
+        <fog attach="fog" args={['#050505', 10, 50]} />
+        <ambientLight intensity={0.4} />
+        <spotLight 
+            position={[10, 20, 10]} 
+            angle={0.3} 
+            penumbra={0.5} 
+            intensity={200} 
+            castShadow 
+            shadow-mapSize={[2048, 2048]} 
+        />
+        <Environment preset="night" />
 
-      {/* 궤적 시각화 (물리 세계 밖에서 렌더링) */}
-      <TrajectoryLine points={trajectoryPoints} />
-    </>
-  );
-};
+        <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ restitution: 0.7, friction: 0.6 }}>
+          <Court />
+          <TennisBall ref={ballRef} position={[0, 1, 11]} />
+        </Physics>
 
-function App() {
-  return (
-    <div style={{ width: '100vw', height: '100vh', background: '#111' }}>
-      <Canvas shadows camera={{ position: [5, 2, 15], fov: 50 }}>
-        <Scene />
+        <TrajectoryLine points={trajectoryPoints} />
+        
+        <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={40} blur={2} far={4} />
+        <OrbitControls 
+            minPolarAngle={0} 
+            maxPolarAngle={Math.PI / 2 - 0.1} 
+            maxDistance={30}
+            minDistance={5}
+        />
       </Canvas>
-      
-      {/* UI 오버레이 */}
-      <div style={{ position: 'absolute', top: 20, left: 20, color: 'white', pointerEvents: 'none' }}>
-        <h1>Ubuntu Tennis Academy Simulator</h1>
-        <p>Adjust parameters and click 'Swing!'</p>
+
+      {/* UI Overlay */}
+      <div className="ui-overlay">
+        {/* Header */}
+        <div className="header">
+          <div className="brand">Ubuntu <span>Tennis</span></div>
+          <div className="stats">
+            {lastImpactData && (
+              <>
+                <div className="stat-item">
+                  <div className="stat-value" style={{ color: 'var(--primary)' }}>{lastImpactData.speed}</div>
+                  <div className="stat-label">KM/H</div>
+                </div>
+                <div className="stat-item">
+                  <div className="stat-value">{lastImpactData.rpm}</div>
+                  <div className="stat-label">RPM</div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Main Content Area (Left: Controls) */}
+        <div style={{ display: 'flex', height: '100%', alignItems: 'center' }}>
+          <div className="panel controls">
+            <div className="control-group">
+              <label className="label">Shot Presets</label>
+              <div className="presets">
+                {(Object.keys(PRESETS) as PresetName[]).map(name => (
+                  <button 
+                    key={name}
+                    className={`btn ${activePreset === name ? 'active' : ''}`}
+                    onClick={() => applyPreset(name)}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <hr style={{ border: 0, borderBottom: '1px solid var(--glass-border)', width: '100%', margin: '1rem 0' }} />
+
+            <RangeControl 
+              label="Racket Speed" 
+              value={params.racketSpeed} 
+              min={10} max={100} step={1} unit="m/s"
+              onChange={(v: number) => updateParam('racketSpeed', v)} 
+            />
+            <RangeControl 
+              label="Face Angle" 
+              value={params.racketAngle} 
+              min={-30} max={30} step={1} unit="deg"
+              onChange={(v: number) => updateParam('racketAngle', v)} 
+            />
+            <RangeControl 
+              label="Swing Path" 
+              value={params.swingPathAngle} 
+              min={-20} max={60} step={1} unit="deg"
+              onChange={(v: number) => updateParam('swingPathAngle', v)} 
+            />
+            
+            <button className="btn btn-large" onClick={handleSwing}>
+              Swing Racket
+            </button>
+             <button className="btn" style={{ marginTop: '0.5rem', opacity: 0.7 }} onClick={handleReset}>
+              Reset Ball
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-export default App;
