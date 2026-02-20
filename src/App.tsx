@@ -1,12 +1,13 @@
 // src/App.tsx
-import React, { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Physics, usePlane } from '@react-three/cannon';
 import { OrbitControls, Line, Sky, Stars } from '@react-three/drei';
 import { useControls, button } from 'leva';
 import * as THREE from 'three';
 
-import TennisBall, { TennisBallRef } from './components/TennisBall';
+import TennisBall from './components/TennisBall';
+import type { TennisBallRef } from './components/TennisBall';
 import { calculateImpact, predictTrajectory } from './utils/physicsLogic';
 
 // 테니스 코트 (바닥)

@@ -1,6 +1,6 @@
 // src/components/TennisBall.tsx
 
-import React, { useRef, useImperativeHandle, forwardRef, useMemo } from 'react';
+import React, { useRef, useImperativeHandle, forwardRef } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import { useSphere } from '@react-three/cannon';
 import * as THREE from 'three';
@@ -60,15 +60,6 @@ const SoftBodyMaterial = shaderMaterial(
 );
 
 extend({ SoftBodyMaterial });
-
-// TypeScript를 위한 JSX 내성 선언
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      softBodyMaterial: any;
-    }
-  }
-}
 
 interface TennisBallProps {
   position?: [number, number, number];
