@@ -8,8 +8,10 @@ import * as THREE from 'three';
 import TennisBall from './components/TennisBall';
 import type { TennisBallRef } from './components/TennisBall';
 import Court from './components/Court';
-import GhostRacket from './components/GhostRacket';
+import Player from './components/Player'; // GhostRacket -> Player
+import Target from './components/Target'; // Target 추가
 import { calculateImpact, predictTrajectory } from './utils/physicsLogic';
+import { soundManager } from './utils/SoundManager'; // SoundManager 추가
 
 // --- Types & Constants ---
 type PresetName = 'Forehand' | 'Backhand' | 'Volley' | 'Serve';
@@ -119,25 +121,40 @@ export default function App() {
   const handleSwing = useCallback(() => {
     if (!ballRef.current) return;
 
+    // 1. 캐릭터 스윙 시작
     setIsSwinging(true);
-    setTimeout(() => setIsSwinging(false), 600); // 애니메이션 시간 (0.6초)
-
-    const impactData = calculateImpact(params.racketSpeed, params.racketAngle, params.swingPathAngle, params.impactLocation);
-    const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
     
-    let spinAxis = new THREE.Vector3(-1, 0, 0);
-    if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0);
+    // 2. 임팩트 타이밍에 맞춰 공 발사 및 효과음 재생 (약 300ms 후)
+    // 속도가 빠르면 딜레이를 약간 줄임 (빠른 스윙)
+    const delay = Math.max(150, 400 - params.racketSpeed * 2);
 
-    ballRef.current.reset(
-      [ballStartPos.x, ballStartPos.y, ballStartPos.z], // 현재 설정된 타격 위치에서 발사
-      [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
-      [spinAxis.x * angularSpeedRad, spinAxis.y * angularSpeedRad, spinAxis.z * angularSpeedRad]
-    );
+    setTimeout(() => {
+        // Play Sound
+        soundManager.playImpact();
+        
+        // Launch Ball
+        const impactData = calculateImpact(params.racketSpeed, params.racketAngle, params.swingPathAngle, params.impactLocation);
+        const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
+        
+        let spinAxis = new THREE.Vector3(-1, 0, 0);
+        if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0);
 
-    setLastImpactData({
-      speed: Math.round(impactData.velocity.length() * 3.6), // km/h
-      rpm: Math.round(impactData.rpm)
-    });
+        ballRef.current.reset(
+          [ballStartPos.x, ballStartPos.y, ballStartPos.z],
+          [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
+          [spinAxis.x * angularSpeedRad, spinAxis.y * angularSpeedRad, spinAxis.z * angularSpeedRad]
+        );
+
+        setLastImpactData({
+          speed: Math.round(impactData.velocity.length() * 3.6),
+          rpm: Math.round(impactData.rpm)
+        });
+
+    }, delay);
+    
+    // 스윙 종료 (애니메이션 시간 고려)
+    setTimeout(() => setIsSwinging(false), delay + 400);
+
   }, [params, activePreset, ballStartPos]);
 
   const handleReset = () => {
@@ -165,10 +182,14 @@ export default function App() {
         <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ restitution: 0.7, friction: 0.6 }}>
           <Court />
           <TennisBall ref={ballRef} position={[0, 1, 11]} />
+          
+           {/* 타겟 챌린지 (반대편 코트) */}
+           <Target position={[0, 1.5, -12]} />
+           <Target position={[-3, 1.0, -10]} />
+           <Target position={[3, 2.0, -11]} />
         </Physics>
 
         {/* 타격 위치 조절 기즈모 (TransformControls) */}
-        {/* 마우스 드래그로 X, Y, Z 이동 가능 */}
         <TransformControls 
             position={[ballStartPos.x, ballStartPos.y, ballStartPos.z]}
             mode="translate"
@@ -188,8 +209,8 @@ export default function App() {
             </mesh>
         </TransformControls>
 
-        {/* 고스트 라켓 (타격 위치 따라감) */}
-        <GhostRacket 
+        {/* 캐릭터 (Player) - Ghost Racket 대신 사용 */}
+        <Player 
           swingPathAngle={params.swingPathAngle} 
           racketAngle={params.racketAngle} 
           onSwing={isSwinging} 
