@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Physics } from '@react-three/cannon';
-import { OrbitControls, Environment, ContactShadows, Line } from '@react-three/drei';
+import { OrbitControls, Environment, ContactShadows, Line, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 import TennisBall from './components/TennisBall';
@@ -54,12 +54,12 @@ const TrajectoryLine = ({ points }: { points: THREE.Vector3[] }) => {
     <Line
       points={points}
       color="#ccff00"
-      lineWidth={2}
+      lineWidth={3}
       dashed={true}
       dashScale={1}
       dashSize={0.5}
       gapSize={0.5}
-      opacity={0.6}
+      opacity={0.8}
       transparent
     />
   );
@@ -73,6 +73,10 @@ export default function App() {
   const [trajectoryPoints, setTrajectoryPoints] = useState<THREE.Vector3[]>([]);
   const [lastImpactData, setLastImpactData] = useState<{ speed: number; rpm: number } | null>(null);
   const [isSwinging, setIsSwinging] = useState(false);
+  
+  // 공의 초기 위치 (타격 지점) - 기본값: 네트 뒤 11m, 높이 1m
+  const [ballStartPos, setBallStartPos] = useState<THREE.Vector3>(new THREE.Vector3(0, 1, 11));
+  const [showGizmo, setShowGizmo] = useState(true);
 
   const ballRef = useRef<TennisBallRef>(null);
 
@@ -80,12 +84,19 @@ export default function App() {
   const applyPreset = (name: PresetName) => {
     setActivePreset(name);
     setParams(PRESETS[name]);
+    
+    // 프리셋에 따라 공 높이 자동 조정 (서브는 높게)
+    if (name === 'Serve') {
+        setBallStartPos(new THREE.Vector3(0, 2.8, 11));
+    } else {
+        setBallStartPos(new THREE.Vector3(0, 1.0, 11));
+    }
   };
 
   // Parameter Change Handler
   const updateParam = (key: keyof SwingParams, value: any) => {
     setParams(prev => ({ ...prev, [key]: value }));
-    setActivePreset('Forehand'); // Custom 상태로 변경 시 하이라이트 해제 (선택 사항)
+    setActivePreset('Forehand');
   };
 
   // Trajectory Prediction (Effect)
@@ -98,21 +109,18 @@ export default function App() {
 
     const startVel = impactData.velocity.clone();
     const startAngVel = spinAxis.multiplyScalar(angularSpeedRad);
-    // Serve starts higher
-    const startY = activePreset === 'Serve' ? 2.8 : 1.0;
-    const startPos = new THREE.Vector3(0, startY, 11); // 네트(0) 기준 뒤쪽(11m)
 
-    const points = predictTrajectory(startPos, startVel, startAngVel);
+    // 예측 궤적 계산 시 현재 설정된 ballStartPos 사용
+    const points = predictTrajectory(ballStartPos, startVel, startAngVel);
     setTrajectoryPoints(points);
-  }, [params, activePreset]);
+  }, [params, activePreset, ballStartPos]);
 
   // Swing Action
   const handleSwing = useCallback(() => {
     if (!ballRef.current) return;
 
-    // Trigger Ghost Racket Animation
     setIsSwinging(true);
-    setTimeout(() => setIsSwinging(false), 500);
+    setTimeout(() => setIsSwinging(false), 600); // 애니메이션 시간 (0.6초)
 
     const impactData = calculateImpact(params.racketSpeed, params.racketAngle, params.swingPathAngle, params.impactLocation);
     const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
@@ -120,11 +128,8 @@ export default function App() {
     let spinAxis = new THREE.Vector3(-1, 0, 0);
     if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0);
 
-    const startY = activePreset === 'Serve' ? 2.8 : 1.0;
-    const startPos: [number, number, number] = [0, startY, 11];
-
     ballRef.current.reset(
-      startPos,
+      [ballStartPos.x, ballStartPos.y, ballStartPos.z], // 현재 설정된 타격 위치에서 발사
       [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
       [spinAxis.x * angularSpeedRad, spinAxis.y * angularSpeedRad, spinAxis.z * angularSpeedRad]
     );
@@ -133,21 +138,19 @@ export default function App() {
       speed: Math.round(impactData.velocity.length() * 3.6), // km/h
       rpm: Math.round(impactData.rpm)
     });
-  }, [params, activePreset]);
+  }, [params, activePreset, ballStartPos]);
 
   const handleReset = () => {
     if (ballRef.current) {
-        const startY = activePreset === 'Serve' ? 2.8 : 1.0;
-        ballRef.current.reset([0, startY, 11], [0,0,0], [0,0,0]);
+        ballRef.current.reset([ballStartPos.x, ballStartPos.y, ballStartPos.z], [0,0,0], [0,0,0]);
     }
   };
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#050505' }}>
       
-      {/* 3D Scene */}
-      <Canvas shadows camera={{ position: [8, 6, 18], fov: 45 }}>
-        <fog attach="fog" args={['#050505', 10, 50]} />
+      <Canvas shadows camera={{ position: [5, 4, 16], fov: 50 }}>
+        <fog attach="fog" args={['#050505', 10, 60]} />
         <ambientLight intensity={0.4} />
         <spotLight 
             position={[10, 20, 10]} 
@@ -164,24 +167,46 @@ export default function App() {
           <TennisBall ref={ballRef} position={[0, 1, 11]} />
         </Physics>
 
-        {/* Ghost Racket Animation */}
+        {/* 타격 위치 조절 기즈모 (TransformControls) */}
+        {/* 마우스 드래그로 X, Y, Z 이동 가능 */}
+        <TransformControls 
+            position={[ballStartPos.x, ballStartPos.y, ballStartPos.z]}
+            mode="translate"
+            translationSnap={0.1}
+            size={0.8}
+            onObjectChange={(e) => {
+                if (e?.target?.object) {
+                    const newPos = e.target.object.position.clone();
+                    if (newPos.y < 0.1) newPos.y = 0.1; // 바닥 아래로 못 가게
+                    setBallStartPos(newPos);
+                }
+            }}
+        >
+            <mesh onClick={() => setShowGizmo(!showGizmo)} visible={showGizmo}>
+                <sphereGeometry args={[0.05, 16, 16]} />
+                <meshBasicMaterial color="#ff0000" wireframe opacity={0.5} transparent />
+            </mesh>
+        </TransformControls>
+
+        {/* 고스트 라켓 (타격 위치 따라감) */}
         <GhostRacket 
           swingPathAngle={params.swingPathAngle} 
           racketAngle={params.racketAngle} 
           onSwing={isSwinging} 
+          targetPosition={ballStartPos}
+          speed={params.racketSpeed}
         />
 
         <TrajectoryLine points={trajectoryPoints} />
         
         <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={40} blur={2} far={4} />
         
-        {/* Unrestricted Camera Controls */}
-        <OrbitControls makeDefault />
+        {/* 카메라 컨트롤 (자유 이동) */}
+        <OrbitControls makeDefault minDistance={2} maxDistance={50} />
       </Canvas>
 
       {/* UI Overlay */}
       <div className="ui-overlay">
-        {/* Header */}
         <div className="header">
           <div className="brand">Ubuntu <span>Tennis</span></div>
           <div className="stats">
@@ -200,7 +225,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Main Content Area (Left: Controls) */}
         <div style={{ display: 'flex', height: '100%', alignItems: 'center' }}>
           <div className="panel controls">
             <div className="control-group">
@@ -245,6 +269,10 @@ export default function App() {
              <button className="btn" style={{ marginTop: '0.5rem', opacity: 0.7 }} onClick={handleReset}>
               Reset Ball
             </button>
+            
+            <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#888', textAlign: 'center' }}>
+                * Drag red gizmo to move impact point
+            </div>
           </div>
         </div>
       </div>
