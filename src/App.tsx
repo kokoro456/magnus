@@ -148,7 +148,7 @@ export default function App() {
   }, [params, ballStartPos]);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-neutral-950 text-white font-sans">
+    <div className="h-full flex flex-col overflow-hidden bg-neutral-950 text-white font-sans" style={{ height: '100%', width: '100%' }}>
       {/* BEGIN: Navigation Header */}
       <header className="h-16 border-b border-neutral-800 bg-neutral-950 flex items-center justify-between px-6 z-50">
         <div className="flex items-center gap-4">

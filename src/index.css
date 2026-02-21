@@ -4,12 +4,22 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    font-family: 'Inter', sans-serif;
-    color: #ffffff;
-    background-color: #050505;
-  }
+/* CRITICAL LAYOUT FIXES */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* 스크롤 방지 */
+  background-color: #050505; /* 배경색 강제 적용 */
+}
+
+@layer components {
+  /* Tailwind 로드 실패 시에도 레이아웃 유지 */
+  .h-full { height: 100%; }
+  .w-full { width: 100%; }
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
 }
 
 @layer utilities {
