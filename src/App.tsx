@@ -7,7 +7,8 @@ import * as THREE from 'three';
 
 import TennisBall from './components/TennisBall';
 import type { TennisBallRef } from './components/TennisBall';
-import Court from './components/Court'; // 새로 만든 코트 컴포넌트
+import Court from './components/Court';
+import GhostRacket from './components/GhostRacket';
 import { calculateImpact, predictTrajectory } from './utils/physicsLogic';
 
 // --- Types & Constants ---
@@ -71,6 +72,7 @@ export default function App() {
   const [params, setParams] = useState<SwingParams>(PRESETS.Forehand);
   const [trajectoryPoints, setTrajectoryPoints] = useState<THREE.Vector3[]>([]);
   const [lastImpactData, setLastImpactData] = useState<{ speed: number; rpm: number } | null>(null);
+  const [isSwinging, setIsSwinging] = useState(false);
 
   const ballRef = useRef<TennisBallRef>(null);
 
@@ -93,7 +95,6 @@ export default function App() {
     
     let spinAxis = new THREE.Vector3(-1, 0, 0); // Topspin base
     if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0); // Slice
-    // Side spin logic could be added here
 
     const startVel = impactData.velocity.clone();
     const startAngVel = spinAxis.multiplyScalar(angularSpeedRad);
@@ -108,6 +109,10 @@ export default function App() {
   // Swing Action
   const handleSwing = useCallback(() => {
     if (!ballRef.current) return;
+
+    // Trigger Ghost Racket Animation
+    setIsSwinging(true);
+    setTimeout(() => setIsSwinging(false), 500);
 
     const impactData = calculateImpact(params.racketSpeed, params.racketAngle, params.swingPathAngle, params.impactLocation);
     const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
@@ -159,15 +164,19 @@ export default function App() {
           <TennisBall ref={ballRef} position={[0, 1, 11]} />
         </Physics>
 
+        {/* Ghost Racket Animation */}
+        <GhostRacket 
+          swingPathAngle={params.swingPathAngle} 
+          racketAngle={params.racketAngle} 
+          onSwing={isSwinging} 
+        />
+
         <TrajectoryLine points={trajectoryPoints} />
         
         <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={40} blur={2} far={4} />
-        <OrbitControls 
-            minPolarAngle={0} 
-            maxPolarAngle={Math.PI / 2 - 0.1} 
-            maxDistance={30}
-            minDistance={5}
-        />
+        
+        {/* Unrestricted Camera Controls */}
+        <OrbitControls makeDefault />
       </Canvas>
 
       {/* UI Overlay */}
