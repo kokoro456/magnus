@@ -11,7 +11,6 @@ interface PlayerProps {
 }
 
 const Player = ({ 
-  swingPathAngle, 
   racketAngle, 
   onSwing,
   targetPosition,
@@ -19,7 +18,6 @@ const Player = ({
 }: PlayerProps) => {
   const groupRef = useRef<THREE.Group>(null);
   const armRef = useRef<THREE.Group>(null);
-  const forearmRef = useRef<THREE.Group>(null);
   const handRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
   
