@@ -1,188 +1,78 @@
-:root {
-  --primary: #ccff00; /* Tennis Ball Yellow */
-  --primary-glow: rgba(204, 255, 0, 0.4);
-  --glass-bg: rgba(10, 25, 47, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --text-main: #ffffff;
-  --text-muted: #8892b0;
-  --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', sans-serif;
+    color: #ffffff;
+    background-color: #050505;
+  }
 }
 
-body {
-  margin: 0;
-  background-color: #050505;
-  color: var(--text-main);
-  font-family: var(--font-main);
-  overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-}
+@layer utilities {
+  .neon-shadow {
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.3);
+  }
+  .neon-text-glow {
+    text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+  }
+  
+  /* Custom Range Slider Styling */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+  }
+  
+  input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    background: #ffff00;
+    cursor: pointer;
+    margin-top: -7px;
+    box-shadow: 0 0 10px rgba(255, 255, 0, 0.6);
+  }
 
-/* UI Overlay Container */
-.ui-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none; /* 3D 조작을 방해하지 않도록 */
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 2rem;
-  box-sizing: border-box;
-}
+  /* Firefox Specific Range Slider Styles */
+  input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+  }
 
-/* Glassmorphism Panels */
-.panel {
-  pointer-events: auto;
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: all 0.3s ease;
-}
+  input[type="range"]::-moz-range-thumb {
+    height: 18px;
+    width: 18px;
+    border-radius: 50%;
+    background: #ffff00;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 10px rgba(255, 255, 0, 0.6);
+  }
 
-.panel:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-/* Header */
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.brand {
-  font-size: 1.5rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  text-transform: uppercase;
-  color: var(--text-main);
-}
-
-.brand span {
-  color: var(--primary);
-}
-
-/* Controls Sidebar */
-.controls {
-  width: 320px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-/* Custom Range Slider */
-input[type=range] {
-  -webkit-appearance: none;
-  width: 100%;
-  background: transparent;
-}
-
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  height: 16px;
-  width: 16px;
-  border-radius: 50%;
-  background: var(--primary);
-  cursor: pointer;
-  margin-top: -6px;
-  box-shadow: 0 0 10px var(--primary-glow);
-}
-
-input[type=range]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 4px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-}
-
-/* Presets Grid */
-.presets {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
-
-.btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid transparent;
-  color: var(--text-main);
-  padding: 0.75rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-  text-align: center;
-}
-
-.btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.btn.active {
-  background: var(--primary);
-  color: #000;
-  box-shadow: 0 0 15px var(--primary-glow);
-}
-
-.btn-large {
-  width: 100%;
-  background: var(--primary);
-  color: #000;
-  font-size: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 1rem;
-}
-
-.btn-large:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 20px var(--primary-glow);
-}
-
-/* Stats Footer */
-.stats {
-  display: flex;
-  gap: 2rem;
-  justify-content: center;
-  align-items: center;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  font-feature-settings: "tnum";
-}
-
-.stat-label {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #000;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 10px;
+  }
 }
