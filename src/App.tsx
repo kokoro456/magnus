@@ -38,8 +38,8 @@ const TrajectoryLine = ({ points }: { points: THREE.Vector3[] }) => {
   return (
     <Line
       points={points}
-      color="#ffff00" // 더 밝은 노란색
-      lineWidth={4} // 더 굵게
+      color="#ffff00" 
+      lineWidth={4} 
       opacity={0.9}
       transparent
     />
@@ -122,17 +122,15 @@ export default function App() {
     else setBallStartPos(new THREE.Vector3(0, 1.0, 11));
   };
 
-  // 실시간 물리 계산 함수 (의존성: params)
+  // 실시간 물리 계산 함수
   const calculateCurrentState = useCallback(() => {
     const speedMs = kmhToMs(params.racketSpeed);
     const impactData = calculateImpact(speedMs, params.racketAngle, params.swingPathAngle, params.impactLocation);
     
-    // 좌우 각도 적용
     const hRad = THREE.MathUtils.degToRad(params.racketHorizontalAngle);
     const velocity = new THREE.Vector3(0, impactData.velocity.y, impactData.velocity.z);
     velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), -hRad);
 
-    // 스핀 축 적용
     const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
     let spinAxis = new THREE.Vector3(-1, 0, 0); 
     if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0); 
@@ -167,7 +165,6 @@ export default function App() {
               [angularVelocity.x, angularVelocity.y, angularVelocity.z]
             );
         }
-        // 통계 업데이트
         const force = 0.5 * 1.225 * (velocity.lengthSq()) * (Math.PI * 0.033 * 0.033) * 0.0006 * angularVelocity.length();
         setLastImpactData({
           speed: Math.round(velocity.length() * 3.6),
@@ -255,15 +252,18 @@ export default function App() {
              <div className="absolute bottom-6 left-6 z-10">
                 <button 
                   onClick={() => setShowGizmo(!showGizmo)}
-                  className="bg-neutral-800/80 hover:bg-neutral-700 text-white text-[10px] font-bold uppercase px-4 py-2 rounded-custom border border-neutral-700 transition-colors pointer-events-auto shadow-lg"
+                  className={`text-[10px] font-bold uppercase px-4 py-3 rounded-custom border transition-all pointer-events-auto shadow-lg flex items-center gap-2 ${showGizmo ? 'bg-tennis-neon text-black border-tennis-neon' : 'bg-neutral-800/80 hover:bg-neutral-700 text-white border-neutral-700'}`}
                 >
-                  {showGizmo ? 'Lock Ball Position' : 'Change Impact Point'}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                  {showGizmo ? 'Done Moving' : 'Set Ball Position'}
                 </button>
              </div>
         </section>
 
         <aside className="w-[400px] bg-neutral-950 border-l border-neutral-800 flex flex-col p-8 overflow-y-auto custom-scrollbar">
+            {/* ... (Sidebar 내용 동일) ... */}
             <section className="space-y-8 mb-10 text-left">
+                {/* ... (Sliders) ... */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-end">
                         <label className="text-[11px] font-bold text-neutral-400 tracking-widest uppercase">1. Racket Speed</label>
