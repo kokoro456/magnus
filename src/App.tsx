@@ -16,11 +16,11 @@ import { soundManager } from './utils/SoundManager';
 type PresetName = 'Forehand' | 'Backhand' | 'Volley' | 'Serve';
 
 interface SwingParams {
-  racketSpeed: number;        // km/h
-  racketAngle: number;        // deg (Vertical - 상하)
-  swingPathAngle: number;     // deg
-  racketHorizontalAngle: number; // deg (Horizontal - 좌우) NEW!
-  impactLocation: number;     // 0-1
+  racketSpeed: number;        
+  racketAngle: number;        
+  swingPathAngle: number;     
+  racketHorizontalAngle: number; 
+  impactLocation: number;     
 }
 
 const PRESETS: Record<PresetName, SwingParams> = {
@@ -30,7 +30,6 @@ const PRESETS: Record<PresetName, SwingParams> = {
   Serve: { racketSpeed: 120, racketAngle: -15, swingPathAngle: -5, racketHorizontalAngle: 0, impactLocation: 0.2 },
 };
 
-// --- Helper Functions ---
 const kmhToMs = (kmh: number) => kmh / 3.6;
 
 // --- 3D Helper Components ---
@@ -39,13 +38,9 @@ const TrajectoryLine = ({ points }: { points: THREE.Vector3[] }) => {
   return (
     <Line
       points={points}
-      color="#ccff00"
-      lineWidth={3}
-      dashed={true}
-      dashScale={1}
-      dashSize={0.5}
-      gapSize={0.5}
-      opacity={0.8}
+      color="#ffff00" // 더 밝은 노란색
+      lineWidth={4} // 더 굵게
+      opacity={0.9}
       transparent
     />
   );
@@ -60,17 +55,12 @@ const WasdOrbitControls = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        setKeys(prev => ({ ...prev, [key]: true }));
-      }
+      if (['w', 'a', 's', 'd'].includes(key)) setKeys(prev => ({ ...prev, [key]: true }));
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        setKeys(prev => ({ ...prev, [key]: false }));
-      }
+      if (['w', 'a', 's', 'd'].includes(key)) setKeys(prev => ({ ...prev, [key]: false }));
     };
-
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
@@ -81,21 +71,16 @@ const WasdOrbitControls = () => {
 
   useFrame((_, delta) => {
     if (!controlsRef.current) return;
-
-    const moveSpeed = 15 * delta; // 이동 속도
-    
-    // 카메라가 바라보는 방향 기준으로 전후좌우 벡터 계산 (Y축 제외)
+    const moveSpeed = 15 * delta;
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     forward.y = 0;
     forward.normalize();
-
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     right.y = 0;
     right.normalize();
 
     const target = controlsRef.current.target;
     const position = camera.position;
-
     const moveVector = new THREE.Vector3(0, 0, 0);
 
     if (keys.w) moveVector.add(forward);
@@ -105,114 +90,76 @@ const WasdOrbitControls = () => {
 
     if (moveVector.lengthSq() > 0) {
       moveVector.normalize().multiplyScalar(moveSpeed);
-      
-      // 타겟과 카메라를 동시에 이동시켜서 Orbit 중심점을 옮김
       target.add(moveVector);
       position.add(moveVector);
     }
   });
 
-  return (
-    <OrbitControls 
-      ref={controlsRef}
-      makeDefault 
-      minDistance={2} 
-      maxDistance={50}
-      enablePan={true} // 마우스 우클릭 팬도 허용
-      enableZoom={true} // 휠 줌 허용
-    />
-  );
+  return <OrbitControls ref={controlsRef} makeDefault minDistance={2} maxDistance={100} />;
 };
 
 // --- Main App ---
 export default function App() {
   const [activePreset, setActivePreset] = useState<PresetName>('Forehand');
   const [params, setParams] = useState<SwingParams>({ ...PRESETS.Forehand });
-  
   const [trajectoryPoints, setTrajectoryPoints] = useState<THREE.Vector3[]>([]);
   const [lastImpactData, setLastImpactData] = useState<{ speed: number; rpm: number, force: number } | null>(null);
   const [isSwinging, setIsSwinging] = useState(false);
-  
   const [ballStartPos, setBallStartPos] = useState<THREE.Vector3>(new THREE.Vector3(0, 1, 11));
   const [showGizmo, setShowGizmo] = useState(false);
 
   const ballRef = useRef<TennisBallRef>(null);
 
-  const applyPreset = (name: PresetName) => {
-    setActivePreset(name);
-    setParams(PRESETS[name]);
-    if (name === 'Serve') {
-        setBallStartPos(new THREE.Vector3(0, 2.8, 11));
-    } else {
-        setBallStartPos(new THREE.Vector3(0, 1.0, 11));
-    }
-  };
-
   const updateParam = (key: keyof SwingParams, value: any) => {
     setParams(prev => ({ ...prev, [key]: value }));
   };
 
-  // 물리 계산 및 궤적 예측
-  const calculatePhysics = useCallback(() => {
+  const applyPreset = (name: PresetName) => {
+    setActivePreset(name);
+    const newParams = { ...PRESETS[name] };
+    setParams(newParams);
+    if (name === 'Serve') setBallStartPos(new THREE.Vector3(0, 2.8, 11));
+    else setBallStartPos(new THREE.Vector3(0, 1.0, 11));
+  };
+
+  // 실시간 물리 계산 함수 (의존성: params)
+  const calculateCurrentState = useCallback(() => {
     const speedMs = kmhToMs(params.racketSpeed);
-    
-    // 1. 기본 브로디 모델 (상하 각도, 스피드, 스핀량 계산)
     const impactData = calculateImpact(speedMs, params.racketAngle, params.swingPathAngle, params.impactLocation);
     
-    // 2. 좌우 각도 반영 (Horizontal Angle)
-    // 수평 각도에 따라 X축(좌우), Z축(전후) 속도 성분 분배
-    // 기본적으로 calculateImpact는 Z축으로만 발사한다고 가정 (velocity.x = 0)
-    // 여기서 회전 행렬을 적용하여 방향을 틂
-    
+    // 좌우 각도 적용
     const hRad = THREE.MathUtils.degToRad(params.racketHorizontalAngle);
-    
-    // 기존 속도 벡터 (Y축은 유지, Z축을 회전)
-    const initialVel = new THREE.Vector3(0, impactData.velocity.y, impactData.velocity.z);
-    
-    // Y축 기준 회전 (좌우) -> X, Z 성분 변형
-    // Three.js 좌표계: -Z가 전방. 
-    // +Angle -> 오른쪽(+X)으로 갈지 왼쪽(-X)으로 갈지 결정.
-    // 보통 라켓 면이 오른쪽을 보면 공은 오른쪽으로 감.
-    
-    // Vector3.applyAxisAngle(Y축, 각도)
-    // 주의: initialVel.z는 음수(전방)임.
-    initialVel.applyAxisAngle(new THREE.Vector3(0, 1, 0), -hRad); // 부호는 테스트 필요
+    const velocity = new THREE.Vector3(0, impactData.velocity.y, impactData.velocity.z);
+    velocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), -hRad);
 
-    // 스핀 축도 회전해야 함
+    // 스핀 축 적용
     const angularSpeedRad = (impactData.rpm * 2 * Math.PI) / 60;
-    
-    // 기본 스핀: Topspin은 X축 회전 (-1, 0, 0)
-    // 스윙 궤적이 가파르면 Topspin, 완만하면 Slice 로직 유지
     let spinAxis = new THREE.Vector3(-1, 0, 0); 
     if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0); 
-
-    // 스핀 축도 타격 방향에 맞춰 Y축 회전
     spinAxis.applyAxisAngle(new THREE.Vector3(0, 1, 0), -hRad);
 
-    return {
-        velocity: initialVel,
-        angularVelocity: spinAxis.multiplyScalar(angularSpeedRad),
-        rpm: impactData.rpm
+    return { 
+        velocity, 
+        angularVelocity: spinAxis.multiplyScalar(angularSpeedRad), 
+        rpm: impactData.rpm 
     };
   }, [params]);
 
+  // 파라미터 또는 공 위치 변경 시 유도선 업데이트
   useEffect(() => {
-    const { velocity, angularVelocity } = calculatePhysics();
+    const { velocity, angularVelocity } = calculateCurrentState();
     const points = predictTrajectory(ballStartPos, velocity, angularVelocity);
     setTrajectoryPoints(points);
-  }, [calculatePhysics, ballStartPos]);
+  }, [calculateCurrentState, ballStartPos]);
 
   const handleSwing = useCallback(() => {
     if (!ballRef.current) return;
-
     setIsSwinging(true);
     const delay = Math.max(150, 400 - params.racketSpeed * 2);
 
     setTimeout(() => {
         soundManager.playImpact();
-        
-        const { velocity, angularVelocity, rpm } = calculatePhysics();
-
+        const { velocity, angularVelocity, rpm } = calculateCurrentState();
         if (ballRef.current) {
             ballRef.current.reset(
               [ballStartPos.x, ballStartPos.y, ballStartPos.z],
@@ -220,61 +167,51 @@ export default function App() {
               [angularVelocity.x, angularVelocity.y, angularVelocity.z]
             );
         }
-
-        // Analytics
-        const speedMs = kmhToMs(params.racketSpeed);
-        const liftCoeff = 1.5 * (0.033 * angularVelocity.length()) / Math.max(speedMs, 1);
-        const force = 0.5 * 1.225 * (speedMs * speedMs) * (Math.PI * 0.033 * 0.033) * Math.abs(liftCoeff);
-
+        // 통계 업데이트
+        const force = 0.5 * 1.225 * (velocity.lengthSq()) * (Math.PI * 0.033 * 0.033) * 0.0006 * angularVelocity.length();
         setLastImpactData({
           speed: Math.round(velocity.length() * 3.6),
           rpm: Math.round(rpm),
           force: parseFloat(force.toFixed(2))
         });
-
     }, delay);
     
     setTimeout(() => setIsSwinging(false), delay + 400);
-
-  }, [calculatePhysics, ballStartPos]);
+  }, [calculateCurrentState, ballStartPos, params.racketSpeed]);
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-neutral-950 text-white font-sans">
-      {/* HEADER */}
+    <div className="h-full flex flex-col overflow-hidden bg-neutral-950 text-white font-sans" style={{ height: '100%', width: '100%' }}>
       <header className="h-16 border-b border-neutral-800 bg-neutral-950 flex items-center justify-between px-6 z-50">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-tennis-neon rounded-full flex items-center justify-center neon-shadow">
-            <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10"></circle>
               <path d="M12 2a14.5 14.5 0 0 0 0 20"></path>
               <path d="M2 12h20"></path>
             </svg>
           </div>
           <div>
-            <h1 className="font-black text-lg leading-none tracking-wider">UBUNTU TENNIS</h1>
-            <p className="text-[10px] text-tennis-neon font-bold tracking-[0.2em] uppercase">Physics Simulator</p>
+            <h1 className="font-black text-lg leading-none tracking-wider uppercase">Ubuntu Tennis</h1>
+            <p className="text-[10px] text-tennis-neon font-bold tracking-[0.2em] uppercase text-left">Physics Simulator</p>
           </div>
         </div>
       </header>
 
       <main className="flex-1 flex overflow-hidden">
-        {/* 3D AREA */}
         <section className="flex-1 relative bg-neutral-900 overflow-hidden">
             <div className="absolute inset-0 z-0 bg-gradient-to-b from-black via-neutral-900 to-black">
-                <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #ffff00 1px, transparent 1px)', backgroundSize: '50px 50px' }}></div>
-                
                 <Canvas shadows camera={{ position: [0, 5, 18], fov: 50 }}>
-                    <fog attach="fog" args={['#050505', 10, 60]} />
+                    <fog attach="fog" args={['#050505', 10, 80]} />
                     <ambientLight intensity={0.4} />
-                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={0.5} intensity={200} castShadow shadow-mapSize={[2048, 2048]} />
+                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={0.5} intensity={200} castShadow />
                     <Environment preset="night" />
 
-                    <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ restitution: 0.7, friction: 0.6 }}>
+                    <Physics gravity={[0, -9.81, 0]}>
                         <Court />
                         <TennisBall ref={ballRef} position={[0, 1, 11]} />
-                        <Target position={[0, 1.5, -12]} />
-                        <Target position={[-3, 1.0, -10]} />
-                        <Target position={[3, 2.0, -11]} />
+                        <Target position={[0, 1.5, -15]} />
+                        <Target position={[-4, 1.0, -12]} />
+                        <Target position={[4, 2.0, -13]} />
                     </Physics>
 
                     <TransformControls 
@@ -291,7 +228,7 @@ export default function App() {
                             }
                         }}
                     >
-                        <mesh onClick={() => setShowGizmo(!showGizmo)} visible={showGizmo}>
+                        <mesh visible={showGizmo}>
                             <sphereGeometry args={[0.05, 16, 16]} />
                             <meshBasicMaterial color="#ff0000" wireframe opacity={0.5} transparent />
                         </mesh>
@@ -299,145 +236,113 @@ export default function App() {
 
                     <TrajectoryLine points={trajectoryPoints} />
                     <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={40} blur={2} far={4} />
-                    
-                    {/* New WASD Controls */}
                     <WasdOrbitControls />
                 </Canvas>
             </div>
 
-            <div className="absolute top-6 left-6 flex flex-col gap-4 z-10 pointer-events-none">
+            <div className="absolute top-6 left-6 flex flex-col gap-4 z-10 pointer-events-none text-left">
                 <div className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-neutral-700 flex items-center gap-2 w-fit">
-                    <span className="text-[10px] font-bold tracking-widest text-white">WASD to Move • Scroll to Zoom</span>
+                    <span className="text-[10px] font-bold tracking-widest text-white uppercase italic">Live Simulation</span>
+                </div>
+                <div className="bg-black/40 backdrop-blur-sm p-3 rounded-lg border border-neutral-800">
+                    <p className="text-[9px] font-bold text-neutral-400 uppercase mb-1">Controls</p>
+                    <p className="text-[10px] text-white">WASD: Move Court</p>
+                    <p className="text-[10px] text-white">Scroll: Zoom In/Out</p>
+                    <p className="text-[10px] text-white">Right Click: Rotate View</p>
                 </div>
             </div>
 
              <div className="absolute bottom-6 left-6 z-10">
                 <button 
                   onClick={() => setShowGizmo(!showGizmo)}
-                  className="bg-neutral-800/80 hover:bg-neutral-700 text-white text-xs px-3 py-2 rounded-custom border border-neutral-700 transition-colors pointer-events-auto"
+                  className="bg-neutral-800/80 hover:bg-neutral-700 text-white text-[10px] font-bold uppercase px-4 py-2 rounded-custom border border-neutral-700 transition-colors pointer-events-auto shadow-lg"
                 >
-                  {showGizmo ? 'Hide Ball Gizmo' : 'Move Ball Position'}
+                  {showGizmo ? 'Lock Ball Position' : 'Change Impact Point'}
                 </button>
              </div>
         </section>
 
-        {/* SIDEBAR */}
         <aside className="w-[400px] bg-neutral-950 border-l border-neutral-800 flex flex-col p-8 overflow-y-auto custom-scrollbar">
-            <section className="space-y-8 mb-10">
-                {/* 1. Racket Speed */}
+            <section className="space-y-8 mb-10 text-left">
                 <div className="space-y-4">
                     <div className="flex justify-between items-end">
                         <label className="text-[11px] font-bold text-neutral-400 tracking-widest uppercase">1. Racket Speed</label>
                         <div className="flex items-baseline gap-1">
                             <span className="text-3xl font-black text-tennis-neon leading-none neon-text-glow">{params.racketSpeed}</span>
-                            <span className="text-[10px] text-neutral-500 font-bold">KM/H</span>
+                            <span className="text-[10px] text-neutral-500 font-bold uppercase">KM/H</span>
                         </div>
                     </div>
-                    <input 
-                        className="w-full cursor-pointer" type="range" min="30" max="150" 
-                        value={params.racketSpeed}
-                        onChange={(e) => updateParam('racketSpeed', parseInt(e.target.value))}
-                    />
+                    <input className="w-full cursor-pointer" type="range" min="30" max="150" value={params.racketSpeed} onChange={(e) => updateParam('racketSpeed', parseInt(e.target.value))} />
                 </div>
 
-                {/* 2. Impact Angle (Vertical) */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-end">
-                        <label className="text-[11px] font-bold text-neutral-400 tracking-widest uppercase">2. Impact Angle (Vertical)</label>
+                        <label className="text-[11px] font-bold text-neutral-400 tracking-widest uppercase">2. Impact Angle (V)</label>
                         <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-black text-white leading-none">{params.racketAngle > 0 ? '+' : ''}{params.racketAngle}</span>
+                            <span className="text-3xl font-black text-white">{params.racketAngle > 0 ? '+' : ''}{params.racketAngle}</span>
                             <span className="text-[10px] text-neutral-500 font-bold uppercase">deg</span>
                         </div>
                     </div>
-                    <input 
-                        className="w-full cursor-pointer" type="range" min="-20" max="20" step="0.5" 
-                        value={params.racketAngle}
-                        onChange={(e) => updateParam('racketAngle', parseFloat(e.target.value))}
-                    />
+                    <input className="w-full cursor-pointer" type="range" min="-20" max="20" step="0.5" value={params.racketAngle} onChange={(e) => updateParam('racketAngle', parseFloat(e.target.value))} />
                 </div>
 
-                {/* 3. Swing Path */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-end">
                         <label className="text-[11px] font-bold text-neutral-400 tracking-widest uppercase">3. Swing Path</label>
                         <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-black text-white leading-none">{params.swingPathAngle > 0 ? '+' : ''}{params.swingPathAngle}</span>
+                            <span className="text-3xl font-black text-white">{params.swingPathAngle > 0 ? '+' : ''}{params.swingPathAngle}</span>
                             <span className="text-[10px] text-neutral-500 font-bold uppercase">deg</span>
                         </div>
                     </div>
-                    <input 
-                        className="w-full cursor-pointer" type="range" min="-20" max="60" step="1" 
-                        value={params.swingPathAngle}
-                        onChange={(e) => updateParam('swingPathAngle', parseInt(e.target.value))}
-                    />
-                    <div className="flex justify-between text-[10px] text-neutral-600">
-                        <span>Down (Slice)</span>
-                        <span>Up (Topspin)</span>
-                    </div>
+                    <input className="w-full cursor-pointer" type="range" min="-20" max="60" step="1" value={params.swingPathAngle} onChange={(e) => updateParam('swingPathAngle', parseInt(e.target.value))} />
                 </div>
 
-                {/* 4. Racket Horizontal Angle (NEW) */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-end">
-                        <label className="text-[11px] font-bold text-tennis-neon tracking-widest uppercase">4. Racket Left/Right</label>
+                        <label className="text-[11px] font-bold text-tennis-neon tracking-widest uppercase">4. Racket Angle (H)</label>
                         <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-black text-white leading-none">{params.racketHorizontalAngle > 0 ? 'R' : params.racketHorizontalAngle < 0 ? 'L' : ''}{Math.abs(params.racketHorizontalAngle)}</span>
+                            <span className="text-3xl font-black text-white">{params.racketHorizontalAngle > 0 ? 'R' : params.racketHorizontalAngle < 0 ? 'L' : ''}{Math.abs(params.racketHorizontalAngle)}</span>
                             <span className="text-[10px] text-neutral-500 font-bold uppercase">deg</span>
                         </div>
                     </div>
-                    <input 
-                        className="w-full cursor-pointer" type="range" min="-30" max="30" step="1" 
-                        value={params.racketHorizontalAngle}
-                        onChange={(e) => updateParam('racketHorizontalAngle', parseInt(e.target.value))}
-                    />
-                    <div className="flex justify-between text-[10px] text-neutral-600">
-                        <span>Left</span>
-                        <span>Center</span>
-                        <span>Right</span>
-                    </div>
+                    <input className="w-full cursor-pointer" type="range" min="-30" max="30" step="1" value={params.racketHorizontalAngle} onChange={(e) => updateParam('racketHorizontalAngle', parseInt(e.target.value))} />
                 </div>
 
-                <div className="space-y-3 pt-6 border-t border-neutral-800">
-                    <label className="text-[10px] font-bold text-neutral-500 tracking-widest uppercase">Presets</label>
-                    <select 
-                        className="w-full bg-neutral-900 text-white text-[10px] font-bold uppercase p-2 rounded-custom border border-neutral-800 focus:outline-none focus:border-tennis-neon"
-                        value={activePreset}
-                        onChange={(e) => applyPreset(e.target.value as PresetName)}
-                    >
-                        {Object.keys(PRESETS).map(name => (
-                            <option key={name} value={name}>{name}</option>
+                <div className="pt-6 border-t border-neutral-800">
+                    <label className="text-[10px] font-bold text-neutral-500 tracking-widest uppercase mb-3 block">Quick Presets</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        {(Object.keys(PRESETS) as PresetName[]).map(name => (
+                            <button key={name} onClick={() => applyPreset(name)} className={`py-2 text-[10px] font-black rounded-custom border transition-all uppercase ${activePreset === name ? 'bg-tennis-neon text-black border-tennis-neon' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white'}`}>
+                                {name}
+                            </button>
                         ))}
-                    </select>
+                    </div>
                 </div>
             </section>
 
-            <button 
-                onClick={handleSwing}
-                disabled={isSwinging}
-                className="w-full py-5 bg-tennis-neon hover:bg-[#e6e600] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all rounded-custom flex items-center justify-center gap-3 text-black font-black uppercase tracking-widest text-sm neon-shadow mb-12"
-            >
-                {isSwinging ? 'Simulating...' : 'Simulate Impact'}
+            <button onClick={handleSwing} disabled={isSwinging} className="w-full py-5 bg-tennis-neon hover:bg-[#e6e600] active:scale-[0.98] disabled:opacity-50 transition-all rounded-custom flex items-center justify-center gap-3 text-black font-black uppercase tracking-widest text-sm neon-shadow mb-12">
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"></path></svg>
+                {isSwinging ? 'Calculating...' : 'Simulate Impact'}
             </button>
 
-            {/* Analytics Section (Same as before) */}
-            <div className="flex-1">
+            <div className="flex-1 text-left">
                 <h3 className="text-[11px] font-bold text-neutral-400 tracking-widest uppercase mb-6 flex items-center gap-2">
                     <span className="w-4 h-[1px] bg-neutral-800"></span>
-                    Analytics
+                    Live Data
                 </h3>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                     <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-custom">
                         <span className="text-[9px] font-bold text-neutral-500 uppercase block mb-1">Exit Speed</span>
                         <div className="flex items-baseline gap-1">
                             <span className="text-xl font-black text-white">{lastImpactData ? lastImpactData.speed : '--'}</span>
-                            <span className="text-[9px] text-neutral-600 font-bold">KM/H</span>
+                            <span className="text-[9px] text-neutral-600 font-bold uppercase">km/h</span>
                         </div>
                     </div>
                     <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-custom">
-                        <span className="text-[9px] font-bold text-neutral-500 uppercase block mb-1">Spin</span>
+                        <span className="text-[9px] font-bold text-neutral-500 uppercase block mb-1">Magnus Force</span>
                         <div className="flex items-baseline gap-1">
-                            <span className="text-xl font-black text-white">{lastImpactData ? lastImpactData.rpm : '--'}</span>
-                            <span className="text-[9px] text-neutral-600 font-bold">RPM</span>
+                            <span className="text-xl font-black text-white">{lastImpactData ? lastImpactData.force : '--'}</span>
+                            <span className="text-[9px] text-neutral-600 font-bold uppercase">N</span>
                         </div>
                     </div>
                 </div>
