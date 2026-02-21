@@ -17,7 +17,7 @@ import { soundManager } from './utils/SoundManager';
 type PresetName = 'Forehand' | 'Backhand' | 'Volley' | 'Serve';
 
 interface SwingParams {
-  racketSpeed: number; // km/h in UI, but logic might need m/s
+  racketSpeed: number; // km/h
   racketAngle: number; // deg
   swingPathAngle: number; // deg
   impactLocation: number; // 0-1
@@ -122,13 +122,14 @@ export default function App() {
         if (params.spinType === 'Slice') spinAxis.set(1, 0, 0);
         else if (params.swingPathAngle < params.racketAngle) spinAxis.set(1, 0, 0);
 
-        ballRef.current.reset(
-          [ballStartPos.x, ballStartPos.y, ballStartPos.z],
-          [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
-          [spinAxis.x * angularSpeedRad, spinAxis.y * angularSpeedRad, spinAxis.z * angularSpeedRad]
-        );
+        if (ballRef.current) {
+            ballRef.current.reset(
+              [ballStartPos.x, ballStartPos.y, ballStartPos.z],
+              [impactData.velocity.x, impactData.velocity.y, impactData.velocity.z],
+              [spinAxis.x * angularSpeedRad, spinAxis.y * angularSpeedRad, spinAxis.z * angularSpeedRad]
+            );
+        }
 
-        // Magnus Force Estimation (Approx)
         const liftCoeff = 1.5 * (0.033 * angularSpeedRad) / Math.max(speedMs, 1);
         const airDensity = 1.225;
         const area = Math.PI * 0.033 * 0.033;
@@ -209,7 +210,7 @@ export default function App() {
                         translationSnap={0.1}
                         size={0.8}
                         visible={showGizmo}
-                        onObjectChange={(e) => {
+                        onObjectChange={(e: any) => {
                             if (e?.target?.object) {
                                 const newPos = e.target.object.position.clone();
                                 if (newPos.y < 0.1) newPos.y = 0.1; 
@@ -253,7 +254,7 @@ export default function App() {
                 </div>
             </div>
             
-             {/* Gizmo Toggle Button (Custom Addition) */}
+             {/* Gizmo Toggle Button */}
              <div className="absolute bottom-6 left-6 z-10">
                 <button 
                   onClick={() => setShowGizmo(!showGizmo)}
